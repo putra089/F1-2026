@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Monoposto F1 - Ultimate Edition</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body { background-color: #0b0b0e; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; touch-action: manipulation; }
+    #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #111; }
+    canvas { background: #151518; box-shadow: 0 0 30px rgba(0,0,0,0.9); }
+    
+    /* HUD Overlay */
+    .hud { position: absolute; top: 15px; left: 15px; right: 15px; display: flex; justify-content: space-between; pointer-events: none; z-index: 10; }
+    .hud-card { background: rgba(15,15,20,0.8); padding: 8px 14px; border-radius: 8px; border-left: 4px solid #e10600; backdrop-filter: blur(5px); }
+    .hud-title { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { font-size: 18px; font-weight: bold; color: #fff; }
+
+    /* Controls Overlay for Mobile */
+    .controls { position: absolute; bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; z-index: 10; pointer-events: auto; }
+    .btn-group { display: flex; gap: 12px; }
+    .btn { width: 68px; height: 68px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.25); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 22px; color: white; backdrop-filter: blur(4px); }
+    .btn:active { background: rgba(225,6,0,0.5); }
+    .btn-drive { width: 75px; height: 75px; border-radius: 16px; font-size: 13px; text-transform: uppercase; }
+    .btn-gas { background: rgba(0, 200, 83, 0.35); border-color: #00c853; }
+    .btn-brake { background: rgba(225, 6, 0, 0.35); border-color: #e10600; }
+
+    /* Screen Menu & Audio Prompts */
+    .screen-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10,10,12,0.92); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; padding: 20px; text-align: center; }
+    .screen-overlay h1 { color: #e10600; font-size: 32px; margin-bottom: 5px; font-style: italic; letter-spacing: 2px; }
+    .screen-overlay p { color: #aaa; font-size: 14px; margin-bottom: 25px; }
+    
+    .team-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; width: 100%; max-width: 400px; margin-bottom: 25px; }
+    .team-btn { padding: 12px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: white; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.2s; }
+    .team-btn.selected { border-color: #fff; transform: scale(1.05); }
+
+    .main-btn { background: #e10600; color: white; border: none; padding: 14px 35px; font-size: 16px; font-weight: bold; border-radius: 8px; text-transform: uppercase; cursor: pointer; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+
+  <!-- Audio F1 Sebenar -->
+  <audio id="f1EngineAudio" loop preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2805/2805-preview.mp3" type="audio/mpeg">
+  </audio>
+
+  <div id="game-container">
+    
+    <!-- Skrin Pemilihan Pasukan & Mula -->
+    <div id="menu-screen" class="screen-overlay">
+      <h1>MONOPOSTO F1</h1>
+      <p>Pilih Pasukan Rasmi Anda</p>
+      
+      <div class="team-grid">
+        <button class="team-btn selected" data-team="ferrari" data-color="#e10600" style="border-color:#e10600;">Ferrari</button>
+        <button class="team-btn" data-team="redbull" data-color="#121f45" style="border-color:#121f45;">Red Bull</button>
+        <button class="team-btn" data-team="mercedes" data-color="#00d2be" style="border-color:#00d2be;">Mercedes</button>
+        <button class="team-btn" data-team="mclaren" data-color="#ff8700" style="border-color:#ff8700;">McLaren</button>
+      </div>
+
+      <button class="main-btn" id="start-btn">Mula Perlumbaan</button>
+    </div>
+
+    <!-- HUD Permainan -->
+    <div class="hud" id="hud-bar" style="display:none;">
+      <div class="hud-card">
+        <div class="hud-title">Kelajuan</div>
+        <div class="hud-value"><span id="speed-val">0</span> <small style="font-size:10px;">KM/H</small></div>
+      </div>
+      <div class="hud-card">
+        <div class="hud-title">Pusingan</div>
+        <div class="hud-value"><span id="lap-val">1</span>/3</div>
+      </div>
+      <div class="hud-card">
+        <div class="hud-title">Masa Terbaik</div>
+        <div class="hud-value" id="best-lap-val">--:--.--</div>
+      </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Butang Kawalan Mobile -->
+    <div class="controls" id="controls-bar" style="display:none;">
+      <div class="btn-group">
+        <div class="btn" id="btn-left">◄</div>
+        <div class="btn" id="btn-right">►</div>
+      </div>
+      <div class="btn-group">
+        <div class="btn btn-drive btn-brake" id="btn-brake">Brek</div>
+        <div class="btn btn-drive btn-gas" id="btn-gas">Pecut</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const engineAudio = document.getElementById('f1EngineAudio');
+
+    function resizeCanvas() {
+      canvas.width = Math.min(window.innerWidth, 800);
+      canvas.height = Math.min(window.innerHeight, 800);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Pemilihan Team F1
+    let selectedColor = '#e10600';
+    document.querySelectorAll('.team-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.team-btn').forEach(b => b.classList.remove('selected'));
+        e.target.classList.add('selected');
+        selectedColor = e.target.getAttribute('data-color');
+      });
+    });
+
+    let gameStarted = false;
+    document.getElementById('start-btn').addEventListener('click', () => {
+      engineAudio.play().then(() => {
+        engineAudio.playbackRate = 0.8;
+        document.getElementById('menu-screen').style.display = 'none';
+        document.getElementById('hud-bar').style.display = 'flex';
+        document.getElementById('controls-bar').style.display = 'flex';
+        gameStarted = true;
+        startTime = Date.now();
+      }).catch(e => alert("Sila sentuh sekali lagi untuk aktifkan audio."));
+    });
+
+    // Kawalan Input
+    const keys = { left: false, right: false, gas: false, brake: false };
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+      if (e.key === 'ArrowUp' || e.key === 'w') keys.gas = true;
+      if (e.key === 'ArrowDown' || e.key === 's') keys.brake = true;
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+      if (e.key === 'ArrowUp' || e.key === 'w') keys.gas = false;
+      if (e.key === 'ArrowDown' || e.key === 's') keys.brake = false;
+    });
+
+    function bindTouch(id, keyProp) {
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyProp] = true; });
+      el.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyProp] = false; });
+      el.addEventListener('mousedown', () => keys[keyProp] = true);
+      el.addEventListener('mouseup', () => keys[keyProp] = false);
+    }
+    bindTouch('btn-left', 'left');
+    bindTouch('btn-right', 'right');
+    bindTouch('btn-gas', 'gas');
+    bindTouch('btn-brake', 'brake');
+
+    // Data Kereta & Fizik
+    const car = {
+      x: 400, y: 700,
+      angle: -Math.PI / 2,
+      speed: 0,
+      maxSpeed: 13,
+      accel: 0.16,
+      friction: 0.05,
+      handling: 0.045
+    };
+
+    let skidMarks = [];
+    let currentLap = 1;
+    let startTime = 0;
+    let bestLapTime = 0;
+
+    function update() {
+      if (!gameStarted) return;
+
+      // Semak sama ada kereta di atas Rumput (Penalti Kelajuan)
+      let currentMaxSpeed = car.maxSpeed;
+      let currentFriction = car.friction;
+      
+      // Medan Litar Oval/Lengkung Sederhana (Jejak dari pusat canvas)
+      let centerX = canvas.width / 2;
+      let centerY = canvas.height / 2;
+      let distFromCenter = Math.hypot(car.x - centerX, car.y - centerY);
+      
+      // Jika terkeluar dari trek (Asfalt lebar antara 150 hingga 260 px)
+      let isOnTrack = (distFromCenter > 130 && distFromCenter < 270);
+      if (!isOnTrack) {
+        currentMaxSpeed = 5; // Terlampau perlahan di atas rumput
+        currentFriction = 0.12;
+      }
+
+      if (keys.gas) car.speed = Math.min(car.speed + car.accel, currentMaxSpeed);
+      else if (keys.brake) {
+        car.speed = Math.max(car.speed - car.accel * 1.8, -2);
+        // Tambah tanda tayar (skid marks) bila brek mengejut
+        if (Math.abs(car.speed) > 4) {
+          skidMarks.push({ x: car.x, y: car.y, alpha: 0.4 });
+          if (skidMarks.length > 50) skidMarks.shift();
+        }
+      } else {
+        if (car.speed > 0) car.speed = Math.max(0, car.speed - currentFriction);
+        if (car.speed < 0) car.speed = Math.min(0, car.speed + currentFriction);
+      }
+
+      if (car.speed !== 0) {
+        let dir = car.speed > 0 ? 1 : -1;
+        if (keys.left) car.angle -= car.handling * dir;
+        if (keys.right) car.angle += car.handling * dir;
+      }
+
+      car.x += Math.cos(car.angle) * car.speed;
+      car.y += Math.sin(car.angle) * car.speed;
+
+      // Kemaskini Audio F1 Sebenar mengikut RPM/Kelajuan
+      let speedRatio = Math.abs(car.speed) / car.maxSpeed;
+      engineAudio.playbackRate = Math.min(Math.max(0.8 + (speedRatio * 1.6), 0.8), 2.4);
+
+      document.getElementById('speed-val').innerText = Math.round(Math.abs(car.speed) * 22);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      let cx = canvas.width / 2;
+      let cy = canvas.height / 2;
+
+      // 1. Lukis Kawasan Rumput Hijau Sebenar
+      ctx.fillStyle = '#1b4d2e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 2. Lukis Trek Asfalt F1
+      ctx.beginPath();
+      ctx.arc(cx, cy, 270, 0, Math.PI * 2);
+      ctx.fillStyle = '#222225';
+      ctx.fill();
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = '#fff'; // Garisan tepi putih trek
+      ctx.stroke();
+
+      // Bahagian Tengah Litar (Rumput Tengah)
+      ctx.beginPath();
+      ctx.arc(cx, cy, 130, 0, Math.PI * 2);
+      ctx.fillStyle = '#1b4d2e';
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+
+      // Garisan Penamat (Start/Finish Line)
+      ctx.strokeStyle = '#ffeb3b';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 130);
+      ctx.lineTo(cx, cy + 270);
+      ctx.stroke();
+
+      // 3. Lukis Kesan Asap / Tanda Tayar (Skid Marks)
+      skidMarks.forEach(sm => {
+        ctx.fillStyle = `rgba(0, 0, 0, ${sm.alpha})`;
+        ctx.fillRect(sm.x - 2, sm.y - 2, 4, 4);
+        sm.alpha -= 0.005;
+      });
+
+      // 4. Lukis Kereta F1 Mengikut Warna Pasukan Terpilih
+      ctx.save();
+      ctx.translate(car.x, car.y);
+      ctx.rotate(car.angle + Math.PI / 2);
+
+      // Badan Utama F1
+      ctx.fillStyle = selectedColor;
+      ctx.fillRect(-9, -22, 18, 44);
+
+      // Kokpit & Pelumba
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-4, -6, 8, 12);
+
+      // Sayap Depan & Belakang
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-13, -24, 26, 5);
+      ctx.fillRect(-13, 18, 26, 5);
+
+      // Tayar Terbuka F1 (Open-wheel)
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-14, -16, 4, 9);
+      ctx.fillRect(10, -16, 4, 9);
+      ctx.fillRect(-14, 10, 4, 9);
+      ctx.fillRect(10, 10, 4, 9);
+
+      ctx.restore();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
